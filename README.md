@@ -146,6 +146,28 @@ For fish shell:
 fish_add_path ~/.cargo/bin
 ```
 
+### Sudo can't find nofind? (Linux)
+
+`sudo` uses root's PATH, which doesn't include `~/.cargo/bin`. Fix with one of these:
+
+**Option 1: Install system-wide (recommended)**
+```bash
+sudo cp ~/.cargo/bin/nofind /usr/local/bin/
+```
+
+**Option 2: Use full path with sudo**
+```bash
+sudo ~/.cargo/bin/nofind transparent-start
+sudo ~/.cargo/bin/nofind transparent-stop
+```
+
+**Option 3: Add to root's secure_path** (Ubuntu/Debian)
+```bash
+sudo visudo
+# Add this line:
+# Defaults    secure_path = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/YOUR_USER/.cargo/bin
+```
+
 ---
 
 ## Usage
@@ -160,6 +182,12 @@ Configure browser to `127.0.0.1:8080` (HTTP + HTTPS proxy). Every 60s your IP ch
 
 ### Full system anonymity (no browser config)
 
+If you installed via `cargo install`, copy the binary first (sudo needs it in system PATH):
+```bash
+sudo cp ~/.cargo/bin/nofind /usr/local/bin/
+```
+
+Then:
 ```bash
 sudo nofind transparent-setup        # One-time Tor config
 sudo systemctl restart tor
@@ -293,10 +321,10 @@ Help bar shows `Auto-Rot ON` when automatic identity rotation is active.
 | `nofind vault-destroy` | Destroy vault |
 | `nofind report` | Privacy report (text + JSON) |
 | `nofind completions <shell>` | Shell completions |
-| `sudo nofind transparent-start` | System-wide transparent proxy |
+| `sudo nofind transparent-start` | System-wide transparent proxy (full path if needed) |
 | `sudo nofind transparent-stop` | Disable transparent proxy |
 | `nofind transparent-status` | Check transparent proxy status |
-| `sudo nofind transparent-setup` | Install Tor TransPort config |
+| `sudo nofind transparent-setup` | Install Tor TransPort config (one-time) |
 
 ---
 
@@ -429,8 +457,11 @@ sudo apt install build-essential pkg-config libssl-dev tor iptables
 # Build
 cargo build --release
 
+# Install system-wide (so sudo can find it)
+sudo cp target/release/nofind /usr/local/bin/
+
 # Run
-./target/release/nofind connect --proxy-port 8080
+nofind connect --proxy-port 8080
 ```
 
 ---
