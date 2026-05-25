@@ -135,6 +135,17 @@ Or install globally:
 cargo install --path .
 ```
 
+If it's your first Rust binary, add `~/.cargo/bin` to your PATH:
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+For fish shell:
+```fish
+fish_add_path ~/.cargo/bin
+```
+
 ---
 
 ## Usage
