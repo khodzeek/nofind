@@ -51,6 +51,27 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
     println!("  ╚══════════════════════════════════════════════╝");
     println!();
 
+    // 0. Verify Tor ports are actually listening
+    if !check_port_listening(config.trans_port) {
+        println!("  ✗ Tor TransPort {} is NOT listening!", config.trans_port);
+        println!();
+        println!("  Fix: Add to /etc/tor/torrc:");
+        println!("    TransPort {}", config.trans_port);
+        println!("    DNSPort {}", config.dns_port);
+        println!("  Then: sudo systemctl restart tor");
+        anyhow::bail!("TransPort {} not listening — cannot start transparent proxy", config.trans_port);
+    }
+    if !check_port_listening(config.dns_port) {
+        println!("  ✗ Tor DNSPort {} is NOT listening!", config.dns_port);
+        println!();
+        println!("  Fix: Add to /etc/tor/torrc:");
+        println!("    DNSPort {}", config.dns_port);
+        println!("  Then: sudo systemctl restart tor");
+        anyhow::bail!("DNSPort {} not listening — cannot start transparent proxy", config.dns_port);
+    }
+    println!("  ✓ Tor TransPort {} listening", config.trans_port);
+    println!("  ✓ Tor DNSPort {} listening", config.dns_port);
+
     // 1. Backup current rules
     backup_iptables(&config.backup_file)?;
     println!("  ✓ iptables rules backed up to {}", config.backup_file.display());
@@ -115,7 +136,25 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
         "-j", "REDIRECT",
         "--to-port", &config.dns_port.to_string(),
     ])?;
+
+    // Block DNS-over-HTTPS providers (force browser to use system DNS via Tor)
+    // This prevents browsers from bypassing the transparent proxy via DoH
+    let doh_ips = [
+        "1.1.1.1", "1.0.0.1",           // Cloudflare
+        "8.8.8.8", "8.8.4.4",           // Google
+        "9.9.9.9", "149.112.112.112",   // Quad9
+    ];
+    for ip in &doh_ips {
+        let _ = run_iptables(&[
+            "-A", "OUTPUT",
+            "-d", ip,
+            "-p", "tcp",
+            "--dport", "443",
+            "-j", "REJECT",
+        ]);
+    }
     println!("  ✓ DNS traffic redirected to Tor DNSPort");
+    println!("  ✓ DNS-over-HTTPS providers blocked (force system DNS)");
 
     // 4. Kill switch (optional): REJECT all non-Tor TCP
     if config.kill_switch {
@@ -216,6 +255,16 @@ pub fn check_status() -> anyhow::Result<()> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
+
+/// Check if a TCP port is listening on localhost.
+fn check_port_listening(port: u16) -> bool {
+    use std::net::TcpStream;
+    TcpStream::connect_timeout(
+        &format!("127.0.0.1:{}", port).parse().unwrap(),
+        std::time::Duration::from_secs(2),
+    )
+    .is_ok()
+}
 
 fn check_root() -> anyhow::Result<()> {
     #[cfg(unix)]
