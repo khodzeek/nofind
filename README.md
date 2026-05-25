@@ -10,52 +10,71 @@ A defensive digital privacy tool to protect browsing metadata, reduce tracking, 
 
 ## Features
 
+### Transparent System-Wide Proxy
+- **Zero browser configuration** — `sudo nofind transparent-start`
+- iptables NAT rules redirect ALL machine TCP traffic through Tor
+- DNS leak prevention via Tor DNSPort redirection
+- Local network exclusion support
+- Automatic iptables backup and restore on exit
+- Kill switch mode: block all non-Tor traffic
+
+### Local HTTP Proxy
+- Built-in forward proxy on 127.0.0.1:8080
+- Browser traffic routed through Tor with stream isolation
+- CONNECT tunnel support for HTTPS
+- Unique SOCKS5 credentials per connection (different circuits per tab)
+
 ### Anonymous Browsing
-- SOCKS5 proxy support with optional Tor integration
-- Secure Tor circuit rotation via control port (NEWNYM)
-- **Automatic IP rotation** — change exit node every N seconds (default: 60s)
-- Session isolation with unique identifiers
+- SOCKS5 proxy with Tor integration
+- Tor circuit rotation via control port (SIGNAL NEWNYM)
+- Automatic IP rotation every N seconds (default: 60s)
+- Stream isolation — unique Tor circuits per session
 - DNS over HTTPS (DoH) — Cloudflare, Google, Quad9
-- DNS leak prevention
+- DNS leak prevention and detection
 - Random User-Agent rotation per session
 - Cookie isolation
 
+### Fingerprint Defense
+- 3 browser profiles: Firefox, Chrome, Safari (randomizable)
+- Full HTTP header emulation: Accept, Accept-Language, Sec-CH-UA, etc.
+- Header rotation every ~5 requests
+- Timing obfuscation: configurable jitter with random delays
+- Traffic padding: random-size padding to defeat packet analysis
+- TLS fingerprint masking via reqwest rustls
+
 ### Network Privacy
-- Public IP exposure check
-- DNS leak detection
+- Public IP exposure check with geolocation
+- DNS leak detection (cross-provider consistency)
 - WebRTC leak awareness
-- Basic browser fingerprint assessment
+- HTTP and TLS fingerprint assessment
 - Anonymity level indicator (None → Maximum)
 
 ### MAC Address Management
-- List all physical network interfaces
-- Generate cryptographically-random MAC addresses
-- Change MAC address via `ip link` (Linux, requires root)
+- List all physical network interfaces with MAC detection
+- Generate cryptographically-random locally-administered MACs
+- Change MAC via `ip link` (Linux, requires root)
 - Original MAC backup and restore instructions
-- Locally-administered unicast MACs (no vendor conflicts)
 
 ### Local Security
-- Automatic cache cleanup on exit
-- Local history cleaning
-- Ephemeral sessions (temp directories)
-- Secure file deletion (overwrite before removal)
+- Encrypted config vault — AES-256-GCM with SHA-256 key derivation
+- RAM-only ephemeral mode (/dev/shm, no disk traces)
+- Automatic cache and history cleanup on exit
+- Secure file deletion with overwrite before removal
+- Secure memory wiping (zeroize on drop)
 
 ### Terminal Interface
 - Interactive TUI dashboard (ratatui + crossterm)
-- Real-time connection status
-- Current IP and geolocation
-- Tor circuit status with auto-rotation indicator
-- DNS security indicators
-- Privacy indicator panel
+- Real-time: connection status, IP, location, Tor, DNS, stats
+- Privacy indicator panel (8 indicators)
 - Scrollable log viewer
+- Session statistics (requests, bandwidth, rotations)
 
-### Advanced Features
-- Automatic Tor identity rotation (configurable interval, default 60s)
-- TOML-based configuration
-- Privacy profiles (standard, paranoid)
-- Soft kill switch (advisory mode)
-- Rate limiting and auto-retry
-- Async/await throughout (tokio)
+### Configuration & Automation
+- TOML-based configuration with privacy profiles
+- Shell completions for bash, zsh, fish
+- Encrypted config vault (optional password-protected storage)
+- JSON + text privacy reports
+- Tor bridge support (obfs4)
 
 ---
 
@@ -64,32 +83,40 @@ A defensive digital privacy tool to protect browsing metadata, reduce tracking, 
 ### Prerequisites
 
 - **Rust** stable (1.75+)
-- **Tor** daemon running (for Tor features)
+- **Tor** daemon (for Tor features)
+- **iptables** (for transparent proxy)
 
 #### Install Tor
 
 **Ubuntu/Debian:**
 ```bash
-sudo apt install tor
+sudo apt install tor iptables
 sudo systemctl enable --now tor
 ```
 
 **Arch Linux:**
 ```bash
-sudo pacman -S tor
+sudo pacman -S tor iptables
 sudo systemctl enable --now tor
 ```
 
-**Enable Tor Control Port** (required for circuit rotation):
+#### Enable Tor Control Port (circuit rotation)
 
-Edit `/etc/tor/torrc`:
+Add to `/etc/tor/torrc`:
 ```
 ControlPort 9051
 CookieAuthentication 1
 ```
 
-Then restart Tor:
+Then:
 ```bash
+sudo systemctl restart tor
+```
+
+#### Enable TransPort (transparent proxy)
+
+```bash
+sudo nofind transparent-setup
 sudo systemctl restart tor
 ```
 
@@ -101,39 +128,40 @@ cd nofind
 cargo build --release
 ```
 
-The binary will be at `target/release/nofind`.
+Binary: `target/release/nofind`
+
+Or install globally:
+```bash
+cargo install --path .
+```
 
 ---
 
 ## Usage
 
-### Initialize configuration
+### Quick start — anonymous browser (no config needed)
 
 ```bash
-nofind config init
+nofind connect --proxy-port 8080
 ```
 
-This creates `~/.config/nofind/config.toml` with defaults.
+Configure browser to `127.0.0.1:8080` (HTTP + HTTPS proxy). Every 60s your IP changes.
 
-### Launch the interactive dashboard
+### Full system anonymity (no browser config)
 
 ```bash
-nofind connect
+sudo nofind transparent-setup        # One-time Tor config
+sudo systemctl restart tor
+sudo nofind transparent-start        # All traffic → Tor
 ```
 
-With auto-rotation every 60 seconds (default):
-```bash
-nofind connect --rotate-interval 60
-```
+**Nothing to configure in any application.** Everything goes through Tor.
 
-With custom proxy:
 ```bash
-nofind connect --proxy 127.0.0.1:9150
-```
-
-With custom config:
-```bash
-nofind connect --config /path/to/config.toml
+sudo nofind transparent-start --kill-switch        # Block all non-Tor traffic
+sudo nofind transparent-start --local-network 192.168.1.0/24  # Exclude LAN
+sudo nofind transparent-stop                       # Restore normal networking
+nofind transparent-status                          # Check status
 ```
 
 ### Check privacy status
@@ -142,40 +170,36 @@ nofind connect --config /path/to/config.toml
 nofind status
 ```
 
-### Rotate Tor identity manually
+Output:
+```
+╔══════════════════════════════════════════╗
+║        nofind — Privacy Status          ║
+╠══════════════════════════════════════════╣
+║  Proxy:        127.0.0.1:9050 ● connected
+║  Public IP:    185.220.101.42
+║  Location:     Frankfurt, DE
+║  ISP:          Tor Exit Node
+║  Tor:          ✓ Active
+║  Circuit:      ● Established
+║  DNS Secure:   ✓ DoH enabled
+║  Anonymity:    HIGH
+╠══════════════════════════════════════════╣
+║  UA Rotation:  ✓
+║  Session Iso:  ✓
+║  Stream Iso:   ✓
+║  Jitter:       ✓
+║  Fingerprint:  basic
+║  Browser:      random
+║  Kill Switch:  ✗
+║  Bridges:      0 configured
+║  Profile:      standard
+╚══════════════════════════════════════════╝
+```
+
+### Rotate Tor identity (new IP)
 
 ```bash
 nofind rotate-identity
-```
-
-Output:
-```
-Requesting Tor circuit rotation...
-Tor circuit rotated successfully. New exit node assigned.
-New exit node IP: 185.220.101.XX
-Exit location: Frankfurt, Hesse (Germany)
-```
-
-### Change MAC address
-
-List available interfaces:
-```bash
-nofind change-mac --list
-```
-
-Change MAC on a specific interface (random MAC):
-```bash
-sudo nofind change-mac --interface eth0
-```
-
-Change to a specific MAC:
-```bash
-sudo nofind change-mac --interface wlan0 --mac 02:42:ac:11:00:ff
-```
-
-Auto-select first active interface:
-```bash
-sudo nofind change-mac
 ```
 
 ### Run leak checks
@@ -184,16 +208,47 @@ sudo nofind change-mac
 nofind check-leaks
 ```
 
-### Clean session data
+### Change MAC address
+
+```bash
+nofind change-mac --list                  # List interfaces
+sudo nofind change-mac --interface eth0   # Random MAC
+sudo nofind change-mac --mac 02:42:ac:11:00:ff  # Specific MAC
+```
+
+### Manage config
+
+```bash
+nofind config init      # Create ~/.config/nofind/config.toml
+nofind config show       # Display current config
+```
+
+### Encrypted config vault
+
+```bash
+nofind vault-init --password "my-secret"   # Create encrypted vault
+nofind connect --vault-password "my-secret" # Connect using vault config
+nofind vault-destroy                       # Destroy vault
+```
+
+### Session cleanup
 
 ```bash
 nofind clean-session
 ```
 
-### View configuration
+### Privacy report
 
 ```bash
-nofind config show
+nofind report   # Text + JSON report
+```
+
+### Shell completions
+
+```bash
+source <(nofind completions bash)   # bash
+source <(nofind completions zsh)    # zsh
+nofind completions fish | source    # fish
 ```
 
 ---
@@ -207,55 +262,44 @@ nofind config show
 | `s` | Refresh status |
 | `c` | Clean session data |
 
-The dashboard also shows `Auto-Rot ON` in the help bar when automatic identity rotation is active.
+Help bar shows `Auto-Rot ON` when automatic identity rotation is active.
 
 ---
 
-## Auto-Rotation
+## All Commands
 
-By default, `nofind connect` rotates your Tor identity every **60 seconds**:
-
-```bash
-nofind connect --rotate-interval 60
-```
-
-Set any interval (in seconds):
-```bash
-nofind connect --rotate-interval 300   # Every 5 minutes
-nofind connect --rotate-interval 30    # Every 30 seconds (aggressive)
-```
-
-Disable auto-rotation:
-```bash
-nofind connect --rotate-interval 0
-```
-
-Or configure permanently in `~/.config/nofind/config.toml`:
-```toml
-[privacy]
-rotate_identity_interval_secs = 60
-```
-
-The dashboard will:
-1. Automatically request a new Tor circuit at the interval
-2. Wait for the new circuit to establish
-3. Fetch and display the new exit node IP and location
-4. Log each rotation in the dashboard
+| Command | Description |
+|---------|-------------|
+| `nofind connect` | Dashboard + local proxy + auto-rotation |
+| `nofind status` | Privacy status overview |
+| `nofind rotate-identity` | New Tor circuit (new IP) |
+| `nofind check-leaks` | DNS, IP, WebRTC, fingerprint leak tests |
+| `nofind clean-session` | Wipe cache, history, temp files |
+| `nofind config init` | Create config file |
+| `nofind config show` | Display config |
+| `nofind change-mac` | MAC address management |
+| `nofind vault-init` | Encrypted config vault |
+| `nofind vault-destroy` | Destroy vault |
+| `nofind report` | Privacy report (text + JSON) |
+| `nofind completions <shell>` | Shell completions |
+| `sudo nofind transparent-start` | System-wide transparent proxy |
+| `sudo nofind transparent-stop` | Disable transparent proxy |
+| `nofind transparent-status` | Check transparent proxy status |
+| `sudo nofind transparent-setup` | Install Tor TransPort config |
 
 ---
 
 ## Configuration
 
-The config file is at `~/.config/nofind/config.toml` (or `$XDG_CONFIG_HOME/nofind/config.toml`).
+Config file: `~/.config/nofind/config.toml`
 
 ### Privacy Profiles
 
-**Standard** — Balanced privacy with Tor and DoH:
-```toml
-profile = "standard"
-```
+| Profile | Description |
+|---------|-------------|
+| `standard` | Tor + DoH + stream isolation + jitter |
+| `paranoid` | All above + kill switch + 120s rotation + full fingerprint defense |
 
-**Paranoid** — Maximum privacy with kill switch and 120s auto-rotation:
 ```toml
 profile = "paranoid"
 ```
@@ -264,16 +308,28 @@ profile = "paranoid"
 
 ```toml
 [network]
-socks5_proxy = "127.0.0.1:9050"    # Your SOCKS5 proxy (Tor default)
-tor_control_port = 9051              # Tor control port
-tor_control_password = ""            # Control port password (cookie auth if empty)
+socks5_proxy = "127.0.0.1:9050"
+tor_control_port = 9051
 
 [dns]
 doh_provider = "cloudflare"          # cloudflare | google | quad9
 
 [privacy]
-rotate_identity_interval_secs = 60   # Auto-rotate Tor circuit every 60s
-kill_switch = false                  # Enable network kill switch
+rotate_identity_interval_secs = 60   # Auto-rotate IP every 60s
+stream_isolation = true              # Unique Tor circuits per session
+fingerprint_level = "full"           # off | basic | full
+browser_profile = "random"           # firefox | chrome | safari | random
+jitter_enabled = true
+jitter_base_delay_ms = 30
+jitter_range_ms = 120
+padding_strategy = "random"          # none | block | random
+kill_switch = false
+tor_bridges = []                     # obfs4 bridge lines
+
+[security]
+clean_cache_on_exit = true
+clean_history_on_exit = true
+ephemeral_sessions = true
 ```
 
 ---
@@ -284,38 +340,40 @@ kill_switch = false                  # Enable network kill switch
 nofind/
 ├── Cargo.toml
 ├── README.md
-├── config/
-│   └── default.toml
+├── config/default.toml
+├── examples/basic_usage.rs
 ├── src/
-│   ├── main.rs          # Entry point
-│   ├── lib.rs           # Library root
-│   ├── cli.rs           # CLI commands (clap) — 7 commands
-│   ├── config.rs        # Configuration (serde + TOML)
-│   ├── network.rs       # HTTP client with SOCKS5 proxy
-│   ├── tor.rs           # Tor SOCKS5 & control protocol
-│   ├── dns.rs           # DNS over HTTPS (DoH)
-│   ├── privacy.rs       # Privacy status & anonymity assessment
-│   ├── leaks.rs         # Leak detection (DNS, IP, WebRTC, fingerprint)
-│   ├── mac.rs           # MAC address management (list, change, random)
-│   ├── security.rs      # Session cleanup & secure deletion
-│   ├── ui.rs            # Ratatui TUI dashboard with auto-rotation
-│   └── utils.rs         # User agents, logging, helpers
-├── logs/
-└── examples/
+│   ├── main.rs           # Entry point
+│   ├── lib.rs            # Library root
+│   ├── cli.rs            # 16 CLI commands (clap)
+│   ├── config.rs         # TOML config with profiles
+│   ├── network.rs        # SOCKS5 HTTP client + fingerprint headers
+│   ├── tor.rs            # Tor control protocol + circuit rotation
+│   ├── dns.rs            # DNS over HTTPS + leak detection
+│   ├── privacy.rs        # Privacy status + anonymity assessment
+│   ├── proxy.rs          # Local HTTP forward proxy
+│   ├── transparent.rs    # System-wide iptables transparent proxy
+│   ├── leaks.rs          # DNS, IP, WebRTC, fingerprint leak tests
+│   ├── fingerprint.rs    # Browser fingerprint emulation + jitter
+│   ├── mac.rs            # MAC address changer
+│   ├── vault.rs          # Encrypted config vault
+│   ├── security.rs       # Session cleanup + secure deletion
+│   ├── stats.rs          # Traffic statistics + report export
+│   ├── ui.rs             # Ratatui TUI dashboard
+│   └── utils.rs          # User agents, logging, helpers
 ```
 
 ### Technology Stack
 
-- **Rust** — Systems programming language
+- **Rust** 1.95+ — Systems programming
 - **Tokio** — Async runtime
-- **Reqwest** — HTTP client with SOCKS5 support
-- **Clap** — CLI argument parsing
-- **Serde** — Serialization/deserialization
-- **TOML** — Configuration format
-- **Tracing** — Structured logging
-- **Ratatui** — Terminal UI framework
-- **Crossterm** — Terminal manipulation
+- **Reqwest** 0.13 — HTTP client with SOCKS5 + rustls
+- **Clap** 4 — CLI argument parsing with shell completions
+- **Serde + TOML** 1 — Configuration
+- **Ratatui** 0.30 + **Crossterm** 0.29 — Terminal UI
+- **Sha2 + Zeroize** — Encryption and secure memory
 - **Parking Lot** — Fast synchronization primitives
+- **iptables** — Kernel-level transparent proxy
 
 ---
 
@@ -326,7 +384,7 @@ nofind is designed exclusively for **defensive privacy**:
 - **Protect metadata** from network observers
 - **Reduce tracking** surface through isolation and rotation
 - **Increase anonymity** on public/untrusted networks
-- **Defend against fingerprinting** via UA rotation and header control
+- **Defend against fingerprinting** via header emulation and jitter
 
 The tool is NOT designed for and must NOT be used for:
 - Illegal bypass of security controls
@@ -341,9 +399,9 @@ The tool is NOT designed for and must NOT be used for:
 
 | Platform | Status |
 |----------|--------|
-| Linux (x86_64) | Full support (Tor + MAC changer) |
+| Linux (x86_64) | Full support — all features |
 | Linux (aarch64) | Supported |
-| Windows | Partial (Tor via external daemon, no MAC changer) |
+| Windows | Partial — Tor via external daemon, no iptables/MAC |
 | macOS | Untested |
 
 ---
@@ -354,14 +412,14 @@ The tool is NOT designed for and must NOT be used for:
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Install dependencies
-sudo apt install build-essential pkg-config libssl-dev tor
+# Install system dependencies
+sudo apt install build-essential pkg-config libssl-dev tor iptables
 
 # Build
 cargo build --release
 
 # Run
-./target/release/nofind connect
+./target/release/nofind connect --proxy-port 8080
 ```
 
 ---
@@ -372,4 +430,4 @@ MIT
 
 ---
 
-**nofind** — Your privacy, your rules.
+**nofind** — Sua privacidade, suas regras.
