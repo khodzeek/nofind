@@ -1,0 +1,33 @@
+[package]
+name = "nofind"
+version = "0.1.0"
+edition = "2021"
+description = "Privacy-first anonymous browsing tool with Tor integration and DNS over HTTPS"
+license = "MIT"
+repository = "https://github.com/khodzeek/nofind"
+authors = ["khodzeek"]
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", default-features = false, features = ["socks", "json", "rustls", "webpki-roots", "gzip", "brotli", "charset", "http2"] }
+clap = { version = "4", features = ["derive", "color"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.2"
+crossterm = "0.29"
+ratatui = "0.30"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+base64 = "0.22"
+sha2 = "0.11"
+zeroize = { version = "1", features = ["derive"] }
+libc = "0.2"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+thiserror = "2"
+parking_lot = "0.12"
