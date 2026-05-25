@@ -86,9 +86,10 @@ fn parse_ip_link_output(text: &str) -> anyhow::Result<Vec<NetworkInterface>> {
                 });
             }
             // Reset for new interface
-            let name = rest.trim();
+            // rest looks like " lo: <LOOPBACK,UP...>" — extract just the name
+            let name = rest.trim().split(':').next().unwrap_or("").trim().to_string();
             // Strip @<parent> suffix if present (e.g., eth0@if5)
-            current_name = name.split('@').next().unwrap_or(name).to_string();
+            current_name = name.split('@').next().unwrap_or(&name).to_string();
             current_mac = None;
             current_state = InterfaceState::Unknown;
             is_loopback = current_name == "lo";

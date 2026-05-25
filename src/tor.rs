@@ -130,7 +130,23 @@ pub async fn rotate_circuit(config: &Config) -> anyhow::Result<()> {
     let connect_timeout = std::time::Duration::from_secs(3);
     let stream = tokio::time::timeout(connect_timeout, TcpStream::connect(&addr))
         .await
-        .map_err(|_| anyhow::anyhow!("Connection to Tor control port timed out ({}). Is Tor running?", addr))??;
+        .map_err(|_| anyhow::anyhow!(
+            "Connection to Tor control port timed out ({}). Is Tor running?\n\
+             Enable the control port:\n  echo 'ControlPort 9051' | sudo tee -a /etc/tor/torrc\n  echo 'CookieAuthentication 1' | sudo tee -a /etc/tor/torrc\n  sudo systemctl restart tor",
+            addr
+        ))?
+        .map_err(|e| {
+            if e.to_string().contains("Connection refused") {
+                anyhow::anyhow!(
+                    "Tor control port refused connection ({}).\n\
+                     Enable it in /etc/tor/torrc:\n  ControlPort 9051\n  CookieAuthentication 1\n\
+                     Then: sudo systemctl restart tor",
+                    addr
+                )
+            } else {
+                anyhow::anyhow!("Tor control port error ({}): {}", addr, e)
+            }
+        })?;
     let (reader, mut writer) = stream.into_split();
     let mut buf_reader = BufReader::new(reader);
 
