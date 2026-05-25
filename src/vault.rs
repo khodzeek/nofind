@@ -46,7 +46,7 @@ impl ConfigVault {
 
     /// Encrypt and write data to the vault.
     pub fn seal(&self, plaintext: &[u8]) -> anyhow::Result<()> {
-        let nonce: [u8; 12] = rand::thread_rng().gen();
+        let nonce: [u8; 12] = rand::thread_rng().r#gen();
         let ciphertext = Self::aes_gcm_encrypt(&self.key.0, &nonce, plaintext)?;
 
         // Format: nonce (12) + ciphertext
@@ -100,7 +100,7 @@ impl ConfigVault {
         if self.path.exists() {
             // Overwrite with random data before deletion
             let size = fs::metadata(&self.path)?.len() as usize;
-            let random: Vec<u8> = (0..size).map(|_| rand::thread_rng().gen()).collect();
+            let random: Vec<u8> = (0..size).map(|_| rand::thread_rng().r#gen()).collect();
             fs::write(&self.path, &random)?;
             fs::remove_file(&self.path)?;
             tracing::info!(path = %self.path.display(), "Vault destroyed");
@@ -312,7 +312,7 @@ pub async fn cmd_vault_destroy() -> anyhow::Result<()> {
     // We don't need the password to destroy — just overwrite and delete
     if vault_path.exists() {
         let size = fs::metadata(&vault_path)?.len() as usize;
-        let random: Vec<u8> = (0..size).map(|_| rand::thread_rng().gen()).collect();
+        let random: Vec<u8> = (0..size).map(|_| rand::thread_rng().r#gen()).collect();
         fs::write(&vault_path, &random)?;
         fs::remove_file(&vault_path)?;
         println!("Vault destroyed: {}", vault_path.display());

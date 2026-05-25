@@ -1,8 +1,8 @@
 [package]
 name = "nofind"
-version = "0.1.0"
-edition = "2021"
-description = "Privacy-first anonymous browsing tool with Tor integration and DNS over HTTPS"
+version = "0.2.0"
+edition = "2024"
+description = "Privacy-first anonymous browsing tool with Tor integration and DNS over HTTPS — 2026"
 license = "MIT"
 repository = "https://github.com/khodzeek/nofind"
 authors = ["khodzeek"]

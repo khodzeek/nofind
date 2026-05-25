@@ -141,7 +141,7 @@ impl Cli {
                     if ram.enabled {
                         let ram_path = ram.init()?;
                         tracing::info!(path = %ram_path.display(), "RAM-only mode active");
-                        std::env::set_var("TMPDIR", ram_path.to_string_lossy().as_ref());
+                        unsafe { std::env::set_var("TMPDIR", ram_path.to_string_lossy().as_ref()); }
                     } else {
                         tracing::warn!("RAM-only mode requested but /dev/shm not available");
                     }
