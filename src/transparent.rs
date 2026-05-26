@@ -260,28 +260,50 @@ pub fn check_status() -> anyhow::Result<()> {
 // ── Helpers ──────────────────────────────────────────────────────
 
 /// Check if a TCP port is listening on localhost.
-/// Uses netstat/ss for TransPort (which doesn't answer plain TCP handshakes),
-/// falls back to TCP connect for regular ports.
+/// Tries ss, netstat, lsof, and direct TCP connect.
 fn check_port_listening(port: u16) -> bool {
-    // Try netstat first (works for all port types)
-    if let Ok(output) = Command::new("ss").args(["-tlnp"]).output() {
+    let port_str = format!(":{}", port);
+
+    // Method 1: ss
+    if let Ok(output) = Command::new("ss").args(["-tln"]).output() {
         let text = String::from_utf8_lossy(&output.stdout);
-        if text.contains(&format!(":{}", port)) {
+        if text.contains(&port_str) {
             return true;
         }
     }
-    // Fallback to netstat
-    if let Ok(output) = Command::new("netstat").args(["-tlnp"]).output() {
+
+    // Method 2: netstat (with sudo, shows all processes)
+    if let Ok(output) = Command::new("netstat").args(["-tln"]).output() {
         let text = String::from_utf8_lossy(&output.stdout);
-        if text.contains(&format!(":{}", port)) {
+        if text.contains(&port_str) {
             return true;
         }
     }
-    // Last resort: direct TCP connect (won't work for TransPort but works for SOCKS/Control)
+
+    // Method 3: direct check via /proc (Linux)
+    if let Ok(content) = std::fs::read_to_string("/proc/net/tcp") {
+        // Format: sl local_address rem_address st ...
+        // local_address is hex: 0100007F:2358 for 127.0.0.1:9040
+        for line in content.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let local = parts[1]; // e.g., "0100007F:2358"
+                if let Some(hex_port) = local.split(':').last() {
+                    if let Ok(p) = u16::from_str_radix(hex_port, 16) {
+                        if p == port {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Method 4: direct TCP connect (works for SOCKS, Control, DNSPort, not TransPort)
     use std::net::TcpStream;
     TcpStream::connect_timeout(
         &format!("127.0.0.1:{}", port).parse().unwrap(),
-        std::time::Duration::from_secs(1),
+        std::time::Duration::from_millis(500),
     )
     .is_ok()
 }
