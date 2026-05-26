@@ -260,11 +260,28 @@ pub fn check_status() -> anyhow::Result<()> {
 // ── Helpers ──────────────────────────────────────────────────────
 
 /// Check if a TCP port is listening on localhost.
+/// Uses netstat/ss for TransPort (which doesn't answer plain TCP handshakes),
+/// falls back to TCP connect for regular ports.
 fn check_port_listening(port: u16) -> bool {
+    // Try netstat first (works for all port types)
+    if let Ok(output) = Command::new("ss").args(["-tlnp"]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains(&format!(":{}", port)) {
+            return true;
+        }
+    }
+    // Fallback to netstat
+    if let Ok(output) = Command::new("netstat").args(["-tlnp"]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains(&format!(":{}", port)) {
+            return true;
+        }
+    }
+    // Last resort: direct TCP connect (won't work for TransPort but works for SOCKS/Control)
     use std::net::TcpStream;
     TcpStream::connect_timeout(
         &format!("127.0.0.1:{}", port).parse().unwrap(),
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(1),
     )
     .is_ok()
 }
