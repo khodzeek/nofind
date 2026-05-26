@@ -122,7 +122,7 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
     println!("  ✓ TCP traffic redirected to Tor TransPort");
 
     // 3. Redirect DNS to Tor DNSPort (if available)
-    if dns_available {
+    if dns_ok {
         run_iptables(&[
             "-t", "nat",
             "-A", "OUTPUT",
