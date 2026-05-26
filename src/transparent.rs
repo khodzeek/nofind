@@ -51,26 +51,24 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
     println!("  ╚══════════════════════════════════════════════╝");
     println!();
 
-    // 0. Verify Tor ports are actually listening
+    // 0. Verify Tor TransPort is actually listening (DNSPort is optional)
     if !check_port_listening(config.trans_port) {
         println!("  ✗ Tor TransPort {} is NOT listening!", config.trans_port);
         println!();
         println!("  Fix: Add to /etc/tor/torrc:");
         println!("    TransPort {}", config.trans_port);
-        println!("    DNSPort {}", config.dns_port);
-        println!("  Then: sudo systemctl restart tor");
+        println!("  Then restart Tor");
         anyhow::bail!("TransPort {} not listening — cannot start transparent proxy", config.trans_port);
     }
-    if !check_port_listening(config.dns_port) {
-        println!("  ✗ Tor DNSPort {} is NOT listening!", config.dns_port);
-        println!();
-        println!("  Fix: Add to /etc/tor/torrc:");
-        println!("    DNSPort {}", config.dns_port);
-        println!("  Then: sudo systemctl restart tor");
-        anyhow::bail!("DNSPort {} not listening — cannot start transparent proxy", config.dns_port);
-    }
     println!("  ✓ Tor TransPort {} listening", config.trans_port);
-    println!("  ✓ Tor DNSPort {} listening", config.dns_port);
+
+    let dns_available = check_port_listening(config.dns_port);
+    if dns_available {
+        println!("  ✓ Tor DNSPort {} listening", config.dns_port);
+    } else {
+        println!("  ⚠ Tor DNSPort {} not listening — DNS via TCP/TransPort", config.dns_port);
+        println!("    (DNS will be resolved by Tor exit nodes via TCP redirect)");
+    }
 
     // 1. Backup current rules
     backup_iptables(&config.backup_file)?;
@@ -118,27 +116,33 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
     ])?;
     println!("  ✓ TCP traffic redirected to Tor TransPort");
 
-    // 3. Redirect DNS to Tor DNSPort
-    run_iptables(&[
-        "-t", "nat",
-        "-A", "OUTPUT",
-        "-p", "udp",
-        "--dport", "53",
-        "-j", "REDIRECT",
-        "--to-port", &config.dns_port.to_string(),
-    ])?;
+    // 3. Redirect DNS to Tor DNSPort (if available)
+    if dns_available {
+        run_iptables(&[
+            "-t", "nat",
+            "-A", "OUTPUT",
+            "-p", "udp",
+            "--dport", "53",
+            "-j", "REDIRECT",
+            "--to-port", &config.dns_port.to_string(),
+        ])?;
 
-    run_iptables(&[
-        "-t", "nat",
-        "-A", "OUTPUT",
-        "-p", "tcp",
-        "--dport", "53",
-        "-j", "REDIRECT",
-        "--to-port", &config.dns_port.to_string(),
-    ])?;
+        run_iptables(&[
+            "-t", "nat",
+            "-A", "OUTPUT",
+            "-p", "tcp",
+            "--dport", "53",
+            "-j", "REDIRECT",
+            "--to-port", &config.dns_port.to_string(),
+        ])?;
+
+        println!("  ✓ DNS traffic redirected to Tor DNSPort");
+    } else {
+        println!("  ⚠ DNS redirection skipped (DNSPort not available)");
+        println!("    DNS queries will be resolved by Tor exit nodes via TCP TransPort");
+    }
 
     // Block DNS-over-HTTPS providers (force browser to use system DNS via Tor)
-    // This prevents browsers from bypassing the transparent proxy via DoH
     let doh_ips = [
         "1.1.1.1", "1.0.0.1",           // Cloudflare
         "8.8.8.8", "8.8.4.4",           // Google
@@ -153,8 +157,7 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
             "-j", "REJECT",
         ]);
     }
-    println!("  ✓ DNS traffic redirected to Tor DNSPort");
-    println!("  ✓ DNS-over-HTTPS providers blocked (force system DNS)");
+    println!("  ✓ DNS-over-HTTPS providers blocked (forces system DNS)");
 
     // 4. Kill switch (optional): REJECT all non-Tor TCP
     if config.kill_switch {
