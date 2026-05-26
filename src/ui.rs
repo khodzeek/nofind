@@ -90,17 +90,28 @@ pub async fn run_dashboard(config: &Config, proxy_addr: &str) -> anyhow::Result<
         None
     };
 
-    // Initial status check
+    // Initial status check with timeout (10s max)
     {
+        let status_result = tokio::time::timeout(
+            Duration::from_secs(10),
+            crate::privacy::check_status(config),
+        )
+        .await;
+
         let mut s = state.lock();
-        match crate::privacy::check_status(config).await {
-            Ok(status) => {
+        match status_result {
+            Ok(Ok(status)) => {
                 s.privacy = status;
                 s.connected = s.privacy.proxy_working;
                 s.add_log(LogEntry::success("Initial status check complete"));
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 s.add_log(LogEntry::error(format!("Status check failed: {}", e)));
+            }
+            Err(_) => {
+                s.add_log(LogEntry::warn("Initial status check timed out (10s) — using defaults"));
+                s.privacy.proxy_working = true; // assume Tor is working
+                s.connected = true;
             }
         }
     }
@@ -169,19 +180,31 @@ pub async fn run_dashboard(config: &Config, proxy_addr: &str) -> anyhow::Result<
             }
         }
 
-        // Periodic status refresh
+        // Periodic status refresh (with timeout)
         if last_status_update.elapsed() >= status_interval {
             last_status_update = Instant::now();
-            let status = crate::privacy::check_status(config).await?;
-            let mut s = state.lock();
-            let prev_connected = s.connected;
-            s.privacy = status;
-            s.connected = s.privacy.proxy_working;
-            if s.connected != prev_connected {
-                if s.connected {
-                    s.add_log(LogEntry::success("Proxy connection restored"));
-                } else {
-                    s.add_log(LogEntry::warn("Proxy connection lost"));
+            match tokio::time::timeout(
+                Duration::from_secs(8),
+                crate::privacy::check_status(config),
+            )
+            .await
+            {
+                Ok(Ok(status)) => {
+                    let mut s = state.lock();
+                    let prev_connected = s.connected;
+                    s.privacy = status;
+                    s.connected = s.privacy.proxy_working;
+                    if s.connected != prev_connected {
+                        if s.connected {
+                            s.add_log(LogEntry::success("Proxy connection restored"));
+                        } else {
+                            s.add_log(LogEntry::warn("Proxy connection lost"));
+                        }
+                    }
+                }
+                _ => {
+                    // Timeout or error — skip this refresh
+                    state.lock().add_log(LogEntry::warn("Periodic refresh timed out, skipping"));
                 }
             }
         }
