@@ -51,23 +51,28 @@ pub fn start_transparent(config: &TransparentConfig) -> anyhow::Result<()> {
     println!("  ╚══════════════════════════════════════════════╝");
     println!();
 
-    // 0. Verify Tor TransPort is actually listening (DNSPort is optional)
-    if !check_port_listening(config.trans_port) {
-        println!("  ✗ Tor TransPort {} is NOT listening!", config.trans_port);
-        println!();
-        println!("  Fix: Add to /etc/tor/torrc:");
-        println!("    TransPort {}", config.trans_port);
-        println!("  Then restart Tor");
-        anyhow::bail!("TransPort {} not listening — cannot start transparent proxy", config.trans_port);
-    }
-    println!("  ✓ Tor TransPort {} listening", config.trans_port);
+    // 0. Verify Tor ports
+    let trans_ok = check_port_listening(config.trans_port);
+    let dns_ok = check_port_listening(config.dns_port);
 
-    let dns_available = check_port_listening(config.dns_port);
-    if dns_available {
+    // Try to detect Tor SOCKS port as fallback check
+    let socks_ok = check_port_listening(config.socks_port);
+
+    if trans_ok {
+        println!("  ✓ Tor TransPort {} listening", config.trans_port);
+    } else if socks_ok {
+        println!("  ⚠ TransPort {} undetected but SOCKS {} is up — proceeding", config.trans_port, config.socks_port);
+    } else {
+        println!("  ✗ Tor not detected on port {} or {} — is Tor running?", config.trans_port, config.socks_port);
+        println!("    Check: sudo netstat -tlnp | grep tor");
+        println!("    Continuing anyway — iptables rules will be applied");
+        println!("    If browser has no internet, run: sudo nofind transparent-stop");
+    }
+
+    if dns_ok {
         println!("  ✓ Tor DNSPort {} listening", config.dns_port);
     } else {
-        println!("  ⚠ Tor DNSPort {} not listening — DNS via TCP/TransPort", config.dns_port);
-        println!("    (DNS will be resolved by Tor exit nodes via TCP redirect)");
+        println!("  ⚠ Tor DNSPort {} not detected — DNS via TCP/TransPort", config.dns_port);
     }
 
     // 1. Backup current rules
